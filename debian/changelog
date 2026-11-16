@@ -1,0 +1,8 @@
+backrest (1.14.1+devass1) unstable; urgency=medium
+
+  * Initial Debian packaging for backrest.
+  * Bundle upstream Go toolchain tarballs (go/go1.26.11.linux-*.tar.gz) and
+    the restic 0.19.1 release binaries (restic/), and ship a prebuilt
+    webui/dist, so the build needs neither network nor Node.
+
+ -- Pavel Artsishevsky <polter.rnd@gmail.com>  Mon, 16 Nov 2026 00:00:00 +0100

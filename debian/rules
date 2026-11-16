@@ -1,0 +1,32 @@
+#!/usr/bin/make -f
+
+include /usr/share/dpkg/architecture.mk
+
+export CGO_ENABLED = 0
+export GOFLAGS = -mod=vendor
+export GOCACHE = $(CURDIR)/debian/.gocache
+export GOPATH = $(CURDIR)/debian/.gopath
+export GOTOOLCHAIN = local
+
+%:
+	dh $@ --buildsystem=none
+
+GO_ARCH := $(shell dpkg --print-architecture)
+GOTOOLCHAIN_DIR := $(CURDIR)/.gotoolchain
+
+override_dh_auto_build:
+	mkdir -p $(GOTOOLCHAIN_DIR) _debbuild
+	tar -C $(GOTOOLCHAIN_DIR) --strip-components=1 -xf go/go1.26.11.linux-$(GO_ARCH).tar.gz
+	PATH="$(GOTOOLCHAIN_DIR)/bin:$$PATH" GOROOT="$(GOTOOLCHAIN_DIR)" GOTOOLCHAIN=local \
+	go build -trimpath -ldflags "-w -s -X main.version=1.14.1 -X main.commit=debian" \
+		-o _debbuild/backrest ./cmd/backrest
+	bunzip2 -c restic/restic_0.19.1_linux_$(GO_ARCH).bz2 > _debbuild/restic
+	chmod 0755 _debbuild/restic
+
+override_dh_auto_test:
+	# Backrest tests need restic and network access, which aren't available
+	# in a clean build chroot. To run them locally:
+	#   go test -mod=vendor ./...
+
+override_dh_auto_clean:
+	rm -rf _debbuild .gotoolchain debian/.gocache debian/.gopath

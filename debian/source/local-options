@@ -1,0 +1,9 @@
+tar-ignore = .git
+tar-ignore = .github
+tar-ignore = .gotoolchain
+tar-ignore = .nodetoolchain
+tar-ignore = webui/node_modules
+tar-ignore = webui/src/paraglide
+tar-ignore = _debbuild
+tar-ignore = debian/.gocache
+tar-ignore = debian/.gopath
