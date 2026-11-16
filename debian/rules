@@ -1,32 +1,65 @@
 #!/usr/bin/make -f
 
 include /usr/share/dpkg/architecture.mk
+include /usr/share/dpkg/pkg-info.mk
+
+# All Go inputs come from build-gomodcache/, a GOPROXY tree that OBS fetches
+# server-side from the entries in go.sum and checks against their h1: hashes
+# (obs-build PBuild/RemoteAssets.pm golang_parse/golang_fetch). go.sum on the
+# packaging branch is upstream's plus the Go toolchain and restic modules; see
+# debian/update-go-sum.sh.
+GO_VERSION := 1.26.11
+RESTIC_VERSION := 0.19.1
+# Report the upstream version (strip packaging suffixes like +devass2).
+BACKREST_VERSION := $(firstword $(subst +, ,$(DEB_VERSION_UPSTREAM)))
 
 export CGO_ENABLED = 0
-export GOFLAGS = -mod=vendor
+export GOTOOLCHAIN = local
+export GOPROXY = file://$(CURDIR)/build-gomodcache
+export GOSUMDB = off
+export GOFLAGS = -mod=readonly -trimpath
+export GOMODCACHE = $(CURDIR)/debian/.gomodcache
 export GOCACHE = $(CURDIR)/debian/.gocache
 export GOPATH = $(CURDIR)/debian/.gopath
-export GOTOOLCHAIN = local
+
+GOROOT_DIR := $(CURDIR)/debian/.goroot
+GO := $(GOROOT_DIR)/bin/go
+TOOLCHAIN_ZIP := build-gomodcache/golang.org/toolchain/@v/v0.0.1-go$(GO_VERSION).linux-$(DEB_HOST_ARCH).zip
 
 %:
 	dh $@ --buildsystem=none
 
-GO_ARCH := $(shell dpkg --print-architecture)
-GOTOOLCHAIN_DIR := $(CURDIR)/.gotoolchain
-
 override_dh_auto_build:
-	mkdir -p $(GOTOOLCHAIN_DIR) _debbuild
-	tar -C $(GOTOOLCHAIN_DIR) --strip-components=1 -xf go/go1.26.11.linux-$(GO_ARCH).tar.gz
-	PATH="$(GOTOOLCHAIN_DIR)/bin:$$PATH" GOROOT="$(GOTOOLCHAIN_DIR)" GOTOOLCHAIN=local \
-	go build -trimpath -ldflags "-w -s -X main.version=1.14.1 -X main.commit=debian" \
+	# Go toolchain, distributed by the Go project as the golang.org/toolchain module.
+	# Module zips don't carry file modes, so restore the executable bits like
+	# cmd/go does when it downloads a toolchain.
+	rm -rf $(GOROOT_DIR) debian/.goroot.tmp
+	unzip -q $(TOOLCHAIN_ZIP) -d debian/.goroot.tmp
+	mv debian/.goroot.tmp/golang.org/toolchain@v0.0.1-go$(GO_VERSION).linux-$(DEB_HOST_ARCH) $(GOROOT_DIR)
+	rm -rf debian/.goroot.tmp
+	chmod 0755 $(GOROOT_DIR)/bin/* $(GOROOT_DIR)/pkg/tool/*/*
+	$(GO) version
+
+	$(GO) build -ldflags "-s -w -X main.version=$(BACKREST_VERSION) -X main.commit=debian" \
 		-o _debbuild/backrest ./cmd/backrest
-	bunzip2 -c restic/restic_0.19.1_linux_$(GO_ARCH).bz2 > _debbuild/restic
-	chmod 0755 _debbuild/restic
+
+	# restic, built from its release module with the tags its build.go uses
+	# (minus selfupdate: the package manages the binary).
+	$(GO) mod download github.com/restic/restic@v$(RESTIC_VERSION)
+	cd $(GOMODCACHE)/github.com/restic/restic@v$(RESTIC_VERSION) && \
+		$(GO) build -tags disable_grpc_modules -ldflags "-s -w" \
+		-o $(CURDIR)/_debbuild/restic ./cmd/restic
 
 override_dh_auto_test:
 	# Backrest tests need restic and network access, which aren't available
 	# in a clean build chroot. To run them locally:
-	#   go test -mod=vendor ./...
+	#   go test ./...
+
+override_dh_installsystemd:
+	# Never stop or restart a running backrest on upgrade: it may be in the
+	# middle of a backup. The new version takes effect on the next restart.
+	dh_installsystemd --no-stop-on-upgrade --no-restart-after-upgrade
 
 override_dh_auto_clean:
-	rm -rf _debbuild .gotoolchain debian/.gocache debian/.gopath
+	chmod -R u+w debian/.gomodcache 2>/dev/null || true
+	rm -rf _debbuild debian/.goroot debian/.goroot.tmp debian/.gomodcache debian/.gocache debian/.gopath

@@ -16,10 +16,6 @@ package-lock.json
 .claude
 webui/dist-backup/
 
-# Debian packaging (populated by debian/prepare-source.sh)
-/vendor/
-/go/
-/restic/
-/.gotoolchain/
-/.nodetoolchain/
+# Debian packaging build output (build-gomodcache/ is provided by OBS)
 /_debbuild/
+/build-gomodcache/

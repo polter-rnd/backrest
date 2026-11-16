@@ -14,8 +14,11 @@ EnvironmentFile=-/etc/default/backrest
 ExecStart=/usr/bin/backrest
 Restart=on-failure
 StateDirectory=backrest
+StateDirectoryMode=0700
 CacheDirectory=backrest
+CacheDirectoryMode=0700
 ConfigurationDirectory=backrest
+ConfigurationDirectoryMode=0700
 
 [Install]
 WantedBy=multi-user.target
